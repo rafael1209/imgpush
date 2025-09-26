@@ -1,4 +1,6 @@
 import os
+import contextlib
+import glob
 import urllib.request
 from typing import Any, Union
 
@@ -132,6 +134,30 @@ def get_image(filename: str) -> Union[tuple[Any, int], Response]:
         return send_from_directory(settings.CACHE_DIR, resized_filename)
 
     return send_from_directory(settings.IMAGES_DIR, filename)
+
+
+@app.route("/<string:filename>", methods=["DELETE"])
+@limiter.exempt
+def delete_image(filename: str) -> Union[tuple[Any, int], Any]:
+    path = os.path.join(settings.IMAGES_DIR, filename)
+
+    if not os.path.isfile(path):
+        return jsonify(error="File not found"), 404
+
+    try:
+        os.remove(path)
+    except OSError:
+        return jsonify(error="Failed to delete file"), 500
+
+    filename_without_extension, extension = os.path.splitext(filename)
+    cache_pattern = os.path.join(
+        settings.CACHE_DIR, f"{filename_without_extension}_*{extension}"
+    )
+    for cached_path in glob.glob(cache_pattern):
+        with contextlib.suppress(Exception):
+            os.remove(cached_path)
+
+    return jsonify(status="ok")
 
 
 if __name__ == "__main__":
